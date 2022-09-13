@@ -21,8 +21,9 @@ Parameters:
     DBInstanceType:
         Description: Tipo de instancia de base de datos
         Type: String
-        Default: db.t2.small
+        Default: db.t2.micro
         AllowedValues: 
+            - db.t2.micro
             - db.t2.small
             - db.t2.medium
             - db.t3.small
