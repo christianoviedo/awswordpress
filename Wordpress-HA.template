@@ -1,0 +1,534 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Wordpress HA - Template que crea VPC público y Wordpress en HA"
+Parameters:
+#    LatestAmiId:
+#        Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+#        Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+    KeyName:
+        Type: AWS::EC2::KeyPair::KeyName
+        Description: Nombre de un KeyPair EC2 para conectarse por SSH al servidor
+    InstanceType:
+        Description: Tipo de instancia de servidor
+        Type: String
+        Default: t1.micro
+        AllowedValues: 
+            - t1.micro
+            - t2.nano
+            - t2.micro
+            - t2.small
+            - t2.medium
+            - t2.large
+    DBInstanceType:
+        Description: Tipo de instancia de base de datos
+        Type: String
+        Default: db.t2.small
+        AllowedValues: 
+            - db.t2.small
+            - db.t2.medium
+            - db.t3.small
+            - db.t3.medium
+    pDbName:
+        Description: Nombre de la base de datos (database name)
+        ConstraintDescription: "Solo alfanuméricos, 8 a 41 caracteres"
+        AllowedPattern: "[a-z0-9]*"
+        Type: String
+    pDbUser:
+        Description: Nombre del usuario de la base de datos (database user)
+        ConstraintDescription: "Solo alfanuméricos, 8 a 41 caracteres"
+        AllowedPattern: "[a-zA-Z0-9]*"
+        Type: String
+    pDbPass:
+        Description: Password del usuario de la base de datos (user password)
+        ConstraintDescription: "Al menos 8 caracteres. No soporta espacios en blanco"
+        Type: String
+        AllowedPattern: "(?=\\S)[^@/\"\\r\\n\\t\\f\\s]*"
+        MaxLength: 41
+        MinLength: 8
+    WordpressAdminEmail:
+        Description: Email del usuario Wordpress
+        AllowedPattern: "([a-zA-Z0-9_\\-\\.]+)@((\\[[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.)|(([a-zA-Z0-9\\-]+\\.)+))([a-zA-Z]{2,4}|[0-9]{1,3})(\\]?)"
+        ConstraintDescription: "Must be a valid email address."
+        Type: "String"
+    WordpressAdminUser:
+        Description: Usuario del usuario Wordpress
+        ConstraintDescription: "Solo alfanuméricos, 8 a 41 caracteres"
+        Type: String
+        AllowedPattern: "[a-zA-Z0-9]*"
+        MaxLength: 41
+        MinLength: 8
+    WordpressAdminPassword:
+        Description: Password del usuario Wordpress
+        ConstraintDescription: "Solo alfanuméricos, 8 a 41 caracteres"
+        Type: String
+        AllowedPattern: "[a-zA-Z0-9]*"
+        MaxLength: 41
+        MinLength: 8
+    SSHLocation:
+        Description: The IP address range that can be used to connect to the EC2 instances by using SSH
+        Type: String
+        MinLength: '9'
+        MaxLength: '18'
+        Default: 0.0.0.0/0
+        AllowedPattern: "(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})/(\\d{1,2})"
+        ConstraintDescription: must be a valid IP CIDR range of the form x.x.x.x/x.
+    MountPoint:
+        Description: The Linux mount point for the EFS volume
+        Type: String
+        MinLength: '1'
+        Default: srv/files
+
+Mappings:
+    AWSInstanceType2Arch:
+        t1.micro:
+          Arch: HVM64
+        t2.nano:
+          Arch: HVM64
+        t2.micro:
+          Arch: HVM64
+        t2.small:
+          Arch: HVM64
+        t2.medium:
+          Arch: HVM64
+        t2.large:
+          Arch: HVM64
+    AWSRegionArch2AMI:
+        us-east-1:
+          HVM64: ami-05fa00d4c63e32376
+          HVMG2: ami-0a584ac55a7631c0c
+        us-east-2:
+          HVM64: ami-0568773882d492fc8
+          HVMG2: NOT_SUPPORTED
+    EngineMap:
+        '8.0.mysql-aurora.3.02.0':
+          Engine: 'aurora-mysql'
+          EngineVersion: '8.0.mysql_aurora.3.02.0'
+          Port: 3306
+          ClusterParameterGroupFamily: 'aurora-mysql8.0'
+          ParameterGroupFamily: 'aurora-mysql8.0'
+
+Resources:
+
+    myVPC:
+        Type: AWS::EC2::VPC
+        Properties:
+            CidrBlock: 10.0.0.0/16
+            EnableDnsSupport: true
+            EnableDnsHostnames: true
+            Tags: 
+                - Key: Name
+                  Value: !Sub ${AWS::StackName} - VPC
+
+    PublicSubnet1:
+        Type: AWS::EC2::Subnet
+        Properties:
+            VpcId: !Ref myVPC
+            CidrBlock: 10.0.1.0/24
+            AvailabilityZone: "us-east-1a"
+#            MapPublicIpOnLaunch: true
+            Tags: 
+                - Key: Name
+                  Value: !Sub ${AWS::StackName} - Subnet1
+
+    PublicSubnet2:
+        Type: AWS::EC2::Subnet
+        Properties:
+            VpcId: !Ref myVPC
+            CidrBlock: 10.0.2.0/24
+            AvailabilityZone: "us-east-1b"
+#            MapPublicIpOnLaunch: true
+            Tags: 
+                - Key: Name
+                  Value: !Sub ${AWS::StackName} - Subnet2
+
+    PublicRouteTable:
+        Type: AWS::EC2::RouteTable
+        Properties:
+            VpcId: !Ref myVPC
+            Tags:
+                - Key: Name
+                  Value: !Sub ${AWS::StackName} - Public Routes
+
+    InternetGateway:
+        Type: AWS::EC2::InternetGateway
+        Properties:
+            Tags:
+                - Key: Name
+                  Value: !Sub ${AWS::StackName} - Internet Gateway
+
+    InternetGatewayAttachment:
+        Type: AWS::EC2::VPCGatewayAttachment
+        Properties:
+            InternetGatewayId: !Ref InternetGateway
+            VpcId: !Ref myVPC
+
+    DefaultPublicRoute:
+        Type: AWS::EC2::Route
+        DependsOn: InternetGatewayAttachment
+        Properties:
+            RouteTableId: !Ref PublicRouteTable
+            DestinationCidrBlock: 0.0.0.0/0
+            GatewayId: !Ref InternetGateway
+
+    PublicSubnet1RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            RouteTableId: !Ref PublicRouteTable
+            SubnetId: !Ref PublicSubnet1
+
+    PublicSubnet2RouteTableAssociation:
+        Type: AWS::EC2::SubnetRouteTableAssociation
+        Properties:
+            RouteTableId: !Ref PublicRouteTable
+            SubnetId: !Ref PublicSubnet2
+
+    FileSystem:
+        Type: AWS::EFS::FileSystem
+        Properties:
+            PerformanceMode: generalPurpose
+            FileSystemTags:
+                - Key: Name
+                  Value: !Sub ${AWS::StackName} - FileSystem
+
+    MountTargetSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+          VpcId:
+            Ref: myVPC
+          GroupDescription: Security group for mount target
+          SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: 2049
+            ToPort: 2049
+            CidrIp: 0.0.0.0/0
+
+    MountTarget1:
+        Type: AWS::EFS::MountTarget
+        Properties:
+            FileSystemId: !Ref FileSystem
+            SubnetId: !Ref PublicSubnet1
+            SecurityGroups:
+                - !Ref MountTargetSecurityGroup
+
+    MountTarget2:
+        Type: AWS::EFS::MountTarget
+        Properties:
+            FileSystemId: !Ref FileSystem
+            SubnetId: !Ref PublicSubnet2
+            SecurityGroups:
+                - !Ref MountTargetSecurityGroup
+
+    GroupPublicSubnet:
+        Type: AWS::RDS::DBSubnetGroup
+        Properties:
+            DBSubnetGroupDescription: Todas las subnet de acceso de BD
+            SubnetIds:
+                - !Ref PublicSubnet1
+                - !Ref PublicSubnet2
+
+    MySQL:
+        Type: AWS::RDS::DBInstance
+        DeletionPolicy: "Delete"
+        Properties:
+          DBName: !Ref pDbName
+          MasterUsername: !Ref pDbUser
+          MasterUserPassword: !Ref pDbPass
+          Engine: MySQL
+          DBInstanceClass: !Ref DBInstanceType
+          StorageType: gp2
+          PubliclyAccessible: false
+          AllocatedStorage: '20'
+          DBInstanceIdentifier: !Sub ${AWS::StackName}-${pDbName}
+          DBSecurityGroups:
+            - !Ref DBEC2SecurityGroup
+          DBSubnetGroupName: !Ref GroupPublicSubnet
+
+    ServerInstance1:
+        Type: AWS::EC2::Instance
+        DependsOn: [MountTarget1,MountTarget2,FileSystem,MountTargetSecurityGroup]
+        Metadata:
+            Comment1: Instalar Apache y PHP
+            AWS::CloudFormation::Init:
+                configSets:
+                    Install:
+                        - setup
+                        - mount
+                        - web
+                        - wordpress
+                setup:
+                    packages:
+                        yum:
+                            nfs-utils: []
+                            mariadb: []
+                            php-mysqlnd: []
+                    commands:
+                        01_createdir:
+                            command: !Sub "mkdir /${MountPoint}"
+                mount:
+                    commands:
+                        01_mount:
+                            command: !Sub >
+                                echo "${MountTarget1.IpAddress}:/    /${MountPoint}  nfs4    defaults,nfsvers=4.1 0   0" >> /etc/fstab
+#                                echo "${FileSystem}.efs.${AWS::Region}.amazonaws.com:/    /${MountPoint}  nfs4    defaults,nfsvers=4.1 0   0" >> /etc/fstab
+                        02_montar:
+                            command: !Sub "mount -a"
+                        03_permissions:
+                            command: !Sub "chown ec2-user:ec2-user /${MountPoint}"
+                web:
+                    services:
+                        sysvinit:
+                            httpd:
+                                enabled: 'true'
+                                ensureRunning: 'true'
+                wordpress:
+                    commands:
+                        01_wget:
+                            command: curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar; chmod +x wp-cli.phar; mv wp-cli.phar /usr/local/bin/wp
+                        02_wordpress:
+                            command: cd /var/www/html; /usr/local/bin/wp core download
+                        03_uploads:
+                            command: !Sub "mkdir /${MountPoint}/wordpress; mkdir /${MountPoint}/wordpress/uploads; cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
+                        04_wp_config:
+                            command: !Sub "cd /var/www/html; /usr/local/bin/wp config create --dbhost=${MySQL.Endpoint.Address} --dbname=${pDbName} --dbuser=${pDbUser} --dbpass=${pDbPass}; mv wp-config.php /${MountPoint}/wordpress/; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
+                        05_datos:
+                            command: !Sub "cd /var/www/html; wp core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
+
+        Properties:
+            KeyName: !Ref KeyName
+            ImageId: !FindInMap [ AWSRegionArch2AMI, !Ref 'AWS::Region' , !FindInMap [ AWSInstanceType2Arch, !Ref InstanceType, Arch ] ]
+            AvailabilityZone: "us-east-1a"
+            NetworkInterfaces: 
+                - AssociatePublicIpAddress: "true"
+                  DeleteOnTermination: true
+                  DeviceIndex: "0"
+                  SubnetId: !Ref PublicSubnet1
+                  GroupSet: 
+                    - !Ref InstanceSecurityGroup
+                    - !Ref SSHSecurityGroup
+            InstanceType: !Ref InstanceType
+            UserData:
+                Fn::Base64: !Sub |
+                  #!/bin/bash -xe
+                  yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+                  yum -y install https://rpms.remirepo.net/enterprise/remi-release-7.rpm
+                  yum makecache
+                  yum -y install yum-utils
+                  yum-config-manager --disable 'remi-php*'
+                  amazon-linux-extras enable php8.0
+                  yum -y install httpd php php80-php-mysql
+                  /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource ServerInstance1 --configsets Install --region ${AWS::Region}
+            Tags:
+                - Key: Name
+                  Value: !Sub ${AWS::StackName} - ServerInstance1
+
+    ServerInstance2:
+        Type: AWS::EC2::Instance
+        DependsOn: [MountTarget1,MountTarget2,FileSystem,MountTargetSecurityGroup]
+        Metadata:
+            Comment1: Instalar Apache y PHP
+            AWS::CloudFormation::Init:
+                configSets:
+                    Install:
+                        - setup
+                        - mount
+                        - web
+                        - wordpress
+                setup:
+                    packages:
+                        yum:
+                            nfs-utils: []
+                            mariadb: []
+                            php-mysqlnd: []
+                    commands:
+                        01_createdir:
+                            command: !Sub "mkdir /${MountPoint}"
+                mount:
+                    commands:
+                        01_mount:
+                                echo "${MountTarget2.IpAddress}:/    /${MountPoint}  nfs4    defaults,nfsvers=4.1 0   0" >> /etc/fstab
+#                                echo "${FileSystem}.efs.${AWS::Region}.amazonaws.com:/    /${MountPoint}  nfs4    defaults,nfsvers=4.1 0   0" >> /etc/fstab
+                        02_montar:
+                            command: !Sub "mount -a"
+                        03_permissions:
+                            command: !Sub "chown ec2-user:ec2-user /${MountPoint}"
+                web:
+                    services:
+                        sysvinit:
+                            httpd:
+                                enabled: 'true'
+                                ensureRunning: 'true'
+                wordpress:
+                    commands:
+                        01_wget:
+                            command: curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar; chmod +x wp-cli.phar; mv wp-cli.phar /usr/local/bin/wp
+                        02_wordpress:
+                            command: cd /var/www/html; /usr/local/bin/wp core download
+                        03_uploads:
+                            command: !Sub "mkdir /${MountPoint}/wordpress; mkdir /${MountPoint}/wordpress/uploads; cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
+                        04_wp_config:
+                            command: !Sub "cd /var/www/html; /usr/local/bin/wp config create --dbhost=${MySQL.Endpoint.Address} --dbname=${pDbName} --dbuser=${pDbUser} --dbpass=${pDbPass}; mv wp-config.php /${MountPoint}/wordpress/; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
+                        05_datos:
+                            command: !Sub "cd /var/www/html; wp core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
+
+        Properties:
+            KeyName: !Ref KeyName
+            ImageId: !FindInMap [ AWSRegionArch2AMI, !Ref 'AWS::Region' , !FindInMap [ AWSInstanceType2Arch, !Ref InstanceType, Arch ] ]
+            AvailabilityZone: "us-east-1b"
+            NetworkInterfaces: 
+                - AssociatePublicIpAddress: "true"
+                  DeleteOnTermination: true
+                  DeviceIndex: "0"
+                  SubnetId: !Ref PublicSubnet2
+                  GroupSet: 
+                    - !Ref InstanceSecurityGroup
+                    - !Ref SSHSecurityGroup
+            InstanceType: !Ref InstanceType
+            UserData:
+                Fn::Base64: !Sub |
+                  #!/bin/bash -xe
+                  yum -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
+                  yum -y install https://rpms.remirepo.net/enterprise/remi-release-7.rpm
+                  yum makecache
+                  yum -y install yum-utils
+                  yum-config-manager --disable 'remi-php*'
+                  amazon-linux-extras enable php8.0
+                  yum -y install httpd php
+                  yum clean metadata
+                  yum install php-{pear,cgi,pdo,common,curl,mbstring,gd,mysqlnd,gettext,bcmath,json,xml,fpm,intl,zip}
+                  /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource ServerInstance1 --configsets Install --region ${AWS::Region}
+            Tags:
+                - Key: Name
+                  Value: !Sub ${AWS::StackName} - ServerInstance2
+
+    ApplicationLoadBalancer:
+        Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+        Properties:
+            Name: !Sub ${AWS::StackName}-LoadBalancer
+            Scheme: "internet-facing"
+            SecurityGroups: 
+                - !Ref ALBSecurityGroup
+            Type: "application"
+            Subnets: 
+              - !Ref PublicSubnet1
+              - !Ref PublicSubnet2
+            IpAddressType: "ipv4"
+
+    ALBHTTPListener:
+        Type: AWS::ElasticLoadBalancingV2::Listener
+        Properties:
+            LoadBalancerArn: !Ref ApplicationLoadBalancer
+            Port: 80
+            Protocol: HTTP
+            DefaultActions: 
+                - Order: 1
+                  TargetGroupArn: !Ref ALBTargetGroup
+                  Type: forward
+
+    ALBTargetGroup:
+        Type: AWS::ElasticLoadBalancingV2::TargetGroup
+        Properties:
+            HealthCheckIntervalSeconds: 30
+            HealthCheckPath: "/"
+            Port: 80
+            Protocol: HTTP
+            HealthCheckPort: "traffic-port"
+            HealthCheckProtocol: "HTTP"
+            HealthCheckTimeoutSeconds: 5
+            UnhealthyThresholdCount: 2
+            TargetType: "instance"
+            Targets: 
+               - Id: !Ref ServerInstance1
+                 Port: 80
+               - Id: !Ref ServerInstance2
+                 Port: 80
+            Matcher: 
+                HttpCode: "200"
+            HealthyThresholdCount: 5
+            VpcId: !Ref myVPC
+            Name: !Sub ${AWS::StackName}-TargetGroup
+            HealthCheckEnabled: true
+            TargetGroupAttributes: 
+              - 
+                Key: "stickiness.enabled"
+                Value: "false"
+              - 
+                Key: "deregistration_delay.timeout_seconds"
+                Value: "300"
+              - 
+                Key: "stickiness.type"
+                Value: "lb_cookie"
+              - 
+                Key: "stickiness.lb_cookie.duration_seconds"
+                Value: "86400"
+              - 
+                Key: "slow_start.duration_seconds"
+                Value: "0"
+              - 
+                Key: "load_balancing.algorithm.type"
+                Value: "round_robin"
+
+    InstanceSecurityGroup:
+        Type: AWS::EC2::SecurityGroup
+        Properties:
+            GroupDescription: Acceso HTTP desde balanceador de carga a instancias EC2
+            VpcId: !Ref myVPC
+            SecurityGroupIngress:
+                - IpProtocol: tcp
+                  FromPort: 80
+                  ToPort: 80
+                  SourceSecurityGroupId: !Select [0, !GetAtt ApplicationLoadBalancer.SecurityGroups]
+                - IpProtocol: tcp
+                  FromPort: 443
+                  ToPort: 443
+                  SourceSecurityGroupId: !Select [0, !GetAtt ApplicationLoadBalancer.SecurityGroups]
+
+    SSHSecurityGroup:
+        Type: 'AWS::EC2::SecurityGroup'
+        Properties:
+            GroupDescription: Enable SSH access
+            VpcId: !Ref myVPC
+            SecurityGroupIngress:
+                - IpProtocol: tcp
+                  FromPort: 22
+                  ToPort: 22
+                  CidrIp: !Ref SSHLocation
+
+    ALBSecurityGroup:
+        Type: 'AWS::EC2::SecurityGroup'
+        Properties:
+            GroupDescription: Internet HTTP y HTTPS a Balanceador
+            VpcId: !Ref myVPC
+            SecurityGroupIngress:
+                - IpProtocol: tcp
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
+                - IpProtocol: tcp
+                  FromPort: 443
+                  ToPort: 443
+                  CidrIp: 0.0.0.0/0
+
+    DBEC2SecurityGroup:
+        Type: AWS::RDS::DBSecurityGroup
+        Properties:
+            EC2VpcId: !Ref myVPC
+            DBSecurityGroupIngress:
+                EC2SecurityGroupId: !GetAtt InstanceSecurityGroup.GroupId
+            GroupDescription: Open database for access
+
+Outputs:
+
+    URL:
+        Description: La URL del sitio web
+        Value: !Join [ '', [ 'http://', !GetAtt ApplicationLoadBalancer.DNSName ] ]
+
+    VPC:
+        Description: Referencia a la VPC creada
+        Value: !Ref myVPC
+
+    PublicSubnets:
+        Description: Lista de las subnets públicas}
+        Value: !Join [ ",", [ !Ref PublicSubnet1, !Ref PublicSubnet2 ]]
+
+    FileSystem:
+        Description: Filesystem común EFS
+        Value: !Ref FileSystem
