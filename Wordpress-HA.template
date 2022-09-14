@@ -285,15 +285,13 @@ Resources:
                         02_wordpress:
                             command: cd /var/www/html; /usr/local/bin/wp core download
                         03_uploads:
-                            command: cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
-#                            command: !Sub "mkdir /${MountPoint}/wordpress; mkdir /${MountPoint}/wordpress/uploads; cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
+                            command: !Sub "mkdir /${MountPoint}/wordpress; mkdir /${MountPoint}/wordpress/uploads; cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
                         04_wp_config:
-                            command: !Sub "cd /var/www/html; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
-#                            command: !Sub "cd /var/www/html; /usr/local/bin/wp config create --dbhost=${MySQL.Endpoint.Address} --dbname=${pDbName} --dbuser=${pDbUser} --dbpass=${pDbPass}; mv wp-config.php /${MountPoint}/wordpress/; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
-#                        05_datos:
-#                            command: !Sub "cd /var/www/html; wp core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
-#                        06_permissions:
-#                            command: !Sub "chown -R ec2-user:ec2-user /${MountPoint}"
+                            command: !Sub "cd /var/www/html; /usr/local/bin/wp config create --dbhost=${MySQL.Endpoint.Address} --dbname=${pDbName} --dbuser=${pDbUser} --dbpass=${pDbPass}; mv wp-config.php /${MountPoint}/wordpress/; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
+                        05_datos:
+                            command: !Sub "cd /var/www/html; wp core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
+                        06_permissions:
+                            command: !Sub "chown -R ec2-user:ec2-user /${MountPoint}"
 
         Properties:
             KeyName: !Ref KeyName
@@ -364,13 +362,15 @@ Resources:
                         02_wordpress:
                             command: cd /var/www/html; /usr/local/bin/wp core download
                         03_uploads:
-                            command: !Sub "mkdir /${MountPoint}/wordpress; mkdir /${MountPoint}/wordpress/uploads; cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
+                            command: cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
+#                            command: !Sub "mkdir /${MountPoint}/wordpress; mkdir /${MountPoint}/wordpress/uploads; cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
                         04_wp_config:
-                            command: !Sub "cd /var/www/html; /usr/local/bin/wp config create --dbhost=${MySQL.Endpoint.Address} --dbname=${pDbName} --dbuser=${pDbUser} --dbpass=${pDbPass}; mv wp-config.php /${MountPoint}/wordpress/; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
-                        05_datos:
-                            command: !Sub "cd /var/www/html; wp core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
-                        06_permissions:
-                            command: !Sub "chown -R ec2-user:ec2-user /${MountPoint}"
+                            command: !Sub "cd /var/www/html; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
+#                            command: !Sub "cd /var/www/html; /usr/local/bin/wp config create --dbhost=${MySQL.Endpoint.Address} --dbname=${pDbName} --dbuser=${pDbUser} --dbpass=${pDbPass}; mv wp-config.php /${MountPoint}/wordpress/; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
+#                        05_datos:
+#                            command: !Sub "cd /var/www/html; wp core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
+#                        06_permissions:
+#                            command: !Sub "chown -R ec2-user:ec2-user /${MountPoint}"
 
         Properties:
             KeyName: !Ref KeyName
