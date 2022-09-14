@@ -325,7 +325,7 @@ Resources:
 
     ServerInstance2:
         Type: AWS::EC2::Instance
-        DependsOn: [MountTarget1,MountTarget2,FileSystem,MountTargetSecurityGroup]
+        DependsOn: [ServerInstance1,MountTarget1,MountTarget2,FileSystem,MountTargetSecurityGroup]
         Metadata:
             Comment1: Instalar Apache y PHP
             AWS::CloudFormation::Init:
@@ -397,7 +397,7 @@ Resources:
                   yum -y install httpd php
                   yum clean metadata
                   yum install php-{pear,cgi,pdo,common,curl,mbstring,gd,mysqlnd,gettext,bcmath,json,xml,fpm,intl,zip}
-                  /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource ServerInstance1 --configsets Install --region ${AWS::Region}
+                  /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource ServerInstance2 --configsets Install --region ${AWS::Region}
             Tags:
                 - Key: Name
                   Value: !Sub ${AWS::StackName} - ServerInstance2
