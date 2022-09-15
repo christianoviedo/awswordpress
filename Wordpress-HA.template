@@ -283,13 +283,13 @@ Resources:
                         01_wget:
                             command: curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar; chmod +x wp-cli.phar; mv wp-cli.phar /usr/local/bin/wp
                         02_wordpress:
-                            command: cd /var/www/html; /usr/local/bin/wp core download
+                            command: cd /var/www/html; /usr/local/bin/wp --allow-root core download
                         03_uploads:
                             command: !Sub "mkdir /${MountPoint}/wordpress; mkdir /${MountPoint}/wordpress/uploads; cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
                         04_wp_config:
-                            command: !Sub "cd /var/www/html; /usr/local/bin/wp config create --dbhost=${MySQL.Endpoint.Address} --dbname=${pDbName} --dbuser=${pDbUser} --dbpass=${pDbPass}; mv wp-config.php /${MountPoint}/wordpress/; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
+                            command: !Sub "cd /var/www/html; /usr/local/bin/wp --allow-root config create --dbhost=${MySQL.Endpoint.Address} --dbname=${pDbName} --dbuser=${pDbUser} --dbpass=${pDbPass}; mv wp-config.php /${MountPoint}/wordpress/; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
                         05_datos:
-                            command: !Sub "cd /var/www/html; wp core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
+                            command: !Sub "cd /var/www/html; /usr/local/bin/wp --allow-root core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
                         06_permissions:
                             command: !Sub "chown -R ec2-user:ec2-user /${MountPoint}"
 
@@ -315,7 +315,8 @@ Resources:
                   yum -y install yum-utils
                   yum-config-manager --disable 'remi-php*'
                   amazon-linux-extras enable php8.0
-                  yum -y install httpd php php80-php-mysql
+                  yum -y install httpd php
+                  yum -y install php-{pear,cgi,pdo,common,curl,mbstring,gd,mysqlnd,gettext,bcmath,json,xml,fpm,intl,zip}
                   /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource ServerInstance1 --configsets Install --region ${AWS::Region}
             Tags:
                 - Key: Name
@@ -345,6 +346,7 @@ Resources:
                 mount:
                     commands:
                         01_mount:
+                            command: !Sub >
                                 echo "${MountTarget2.IpAddress}:/    /${MountPoint}  nfs4    defaults,nfsvers=4.1 0   0" >> /etc/fstab
 #                                echo "${FileSystem}.efs.${AWS::Region}.amazonaws.com:/    /${MountPoint}  nfs4    defaults,nfsvers=4.1 0   0" >> /etc/fstab
                         02_montar:
@@ -360,15 +362,15 @@ Resources:
                         01_wget:
                             command: curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar; chmod +x wp-cli.phar; mv wp-cli.phar /usr/local/bin/wp
                         02_wordpress:
-                            command: cd /var/www/html; /usr/local/bin/wp core download
+                            command: cd /var/www/html; /usr/local/bin/wp --allow-root core download
                         03_uploads:
-                            command: cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
+                            command: !Sub "cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
 #                            command: !Sub "mkdir /${MountPoint}/wordpress; mkdir /${MountPoint}/wordpress/uploads; cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
                         04_wp_config:
                             command: !Sub "cd /var/www/html; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
 #                            command: !Sub "cd /var/www/html; /usr/local/bin/wp config create --dbhost=${MySQL.Endpoint.Address} --dbname=${pDbName} --dbuser=${pDbUser} --dbpass=${pDbPass}; mv wp-config.php /${MountPoint}/wordpress/; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
 #                        05_datos:
-#                            command: !Sub "cd /var/www/html; wp core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
+#                            command: !Sub "cd /var/www/html; /usr/local/bin/wp --allow-root core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
 #                        06_permissions:
 #                            command: !Sub "chown -R ec2-user:ec2-user /${MountPoint}"
 
@@ -395,8 +397,7 @@ Resources:
                   yum-config-manager --disable 'remi-php*'
                   amazon-linux-extras enable php8.0
                   yum -y install httpd php
-                  yum clean metadata
-                  yum install php-{pear,cgi,pdo,common,curl,mbstring,gd,mysqlnd,gettext,bcmath,json,xml,fpm,intl,zip}
+                  yum -y install php-{pear,cgi,pdo,common,curl,mbstring,gd,mysqlnd,gettext,bcmath,json,xml,fpm,intl,zip}
                   /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource ServerInstance2 --configsets Install --region ${AWS::Region}
             Tags:
                 - Key: Name
