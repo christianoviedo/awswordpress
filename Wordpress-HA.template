@@ -285,7 +285,7 @@ Resources:
                         02_wordpress:
                             command: cd /var/www/html; /usr/local/bin/wp --allow-root core download
                         03_uploads:
-                            command: !Sub "mkdir /${MountPoint}/wordpress; mkdir /${MountPoint}/wordpress/uploads; cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
+                            command: !Sub "mkdir /${MountPoint}/wordpress; mkdir /${MountPoint}/wordpress/uploads; cd /var/www/html; mv wp-content/* /${MountPoint}/wordpress/uploads; rmdir wp-content; ln -s /${MountPoint}/wordpress/uploads wp-content"
                         04_wp_config:
                             command: !Sub "cd /var/www/html; /usr/local/bin/wp --allow-root config create --dbhost=${MySQL.Endpoint.Address} --dbname=${pDbName} --dbuser=${pDbUser} --dbpass=${pDbPass}; mv wp-config.php /${MountPoint}/wordpress/; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
                         05_datos:
@@ -364,7 +364,7 @@ Resources:
                         02_wordpress:
                             command: cd /var/www/html; /usr/local/bin/wp --allow-root core download
                         03_uploads:
-                            command: !Sub "cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
+                            command: !Sub "cd /var/www/html; rm -rf wp-content; ln -s /${MountPoint}/wordpress/uploads wp-content"
 #                            command: !Sub "mkdir /${MountPoint}/wordpress; mkdir /${MountPoint}/wordpress/uploads; cd /var/www/html; ln -s /${MountPoint}/wordpress/uploads uploads"
                         04_wp_config:
                             command: !Sub "cd /var/www/html; ln -s /${MountPoint}/wordpress/wp-config.php wp-config.php"
