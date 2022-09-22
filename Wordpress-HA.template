@@ -255,6 +255,7 @@ Resources:
                         - mount
                         - web
                         - wordpress
+                        - swap
                 setup:
                     packages:
                         yum:
@@ -292,6 +293,12 @@ Resources:
                             command: !Sub "cd /var/www/html; /usr/local/bin/wp --allow-root core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
                         06_permissions:
                             command: !Sub "chown -R ec2-user:ec2-user /${MountPoint}"
+                swap:
+                    commands:
+                        01_dd:
+                            command: dd if=/dev/zero of=/swapfile bs=1K count=2M; chmod 600 /swapfile; mkswap /swapfile; swapon /swapfile
+                        02_mount:
+                            command: echo "/swapfile    swap    swap    defaults    0   0" >> /etc/fstab
 
         Properties:
             KeyName: !Ref KeyName
@@ -334,6 +341,7 @@ Resources:
                         - mount
                         - web
                         - wordpress
+                        - swap
                 setup:
                     packages:
                         yum:
@@ -373,6 +381,12 @@ Resources:
 #                            command: !Sub "cd /var/www/html; /usr/local/bin/wp --allow-root core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
 #                        06_permissions:
 #                            command: !Sub "chown -R ec2-user:ec2-user /${MountPoint}"
+                swap:
+                    commands:
+                        01_dd:
+                            command: dd if=/dev/zero of=/swapfile bs=1K count=2M; chmod 600 /swapfile; mkswap /swapfile; swapon /swapfile
+                        02_mount:
+                            command: echo "/swapfile    swap    swap    defaults    0   0" >> /etc/fstab
 
         Properties:
             KeyName: !Ref KeyName
