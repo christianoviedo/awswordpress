@@ -10,7 +10,7 @@ Parameters:
     InstanceType:
         Description: Tipo de instancia de servidor
         Type: String
-        Default: t1.micro
+        Default: t2.micro
         AllowedValues: 
             - t1.micro
             - t2.nano
@@ -256,6 +256,7 @@ Resources:
                         - web
                         - wordpress
                         - swap
+                        - https
                 setup:
                     packages:
                         yum:
@@ -280,6 +281,26 @@ Resources:
                                 enabled: 'true'
                                 ensureRunning: 'true'
                 wordpress:
+                    files:
+                        /${MountPoint}/wordpress/htaccess:
+                            content: !Sub |
+                                # BEGIN WordPress
+                                # The directives (lines) between "BEGIN WordPress" and "END WordPress" are
+                                # dynamically generated, and should only be modified via WordPress filters.
+                                # Any changes to the directives between these markers will be overwritten.
+                                <IfModule mod_rewrite.c>
+                                RewriteEngine On
+                                RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+                                RewriteBase /
+                                RewriteRule ^index\.php$ - [L]
+                                RewriteCond %{REQUEST_FILENAME} !-f
+                                RewriteCond %{REQUEST_FILENAME} !-d
+                                RewriteRule . /index.php [L]
+                                </IfModule>
+                                # END WordPress
+                            mode: "000644"
+                            owner: "root"
+                            group: "root"
                     commands:
                         01_wget:
                             command: curl -O https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar; chmod +x wp-cli.phar; mv wp-cli.phar /usr/local/bin/wp
@@ -293,12 +314,23 @@ Resources:
                             command: !Sub "cd /var/www/html; /usr/local/bin/wp --allow-root core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
                         06_permissions:
                             command: !Sub "chown -R ec2-user:ec2-user /${MountPoint}"
+                        07_htaccess:
+                            command: Sub "cd /var/www/html; ln -s /${MountPoint}/wordpress/htaccess .htaccess"
+
                 swap:
                     commands:
                         01_dd:
                             command: dd if=/dev/zero of=/swapfile bs=1K count=2M; chmod 600 /swapfile; mkswap /swapfile; swapon /swapfile
                         02_mount:
                             command: echo "/swapfile    swap    swap    defaults    0   0" >> /etc/fstab
+                https:
+                    packages:
+                        yum:
+                            mod_ssl: []
+                    commands:
+                        01_ssl:
+                            command: cd /etc/pki/tls/certs; ./make-dummy-cert localhost.crt
+                            # openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/pki/tls/private/localhost.key -out /etc/ssl/certs/localhost.crt
 
         Properties:
             KeyName: !Ref KeyName
@@ -342,6 +374,7 @@ Resources:
                         - web
                         - wordpress
                         - swap
+                        - https
                 setup:
                     packages:
                         yum:
@@ -381,12 +414,22 @@ Resources:
 #                            command: !Sub "cd /var/www/html; /usr/local/bin/wp --allow-root core install --url='http://${ApplicationLoadBalancer.DNSName}' --title='Este es mi sitio hecho con WordPress' --admin_user=${WordpressAdminUser} --admin_password=${WordpressAdminPassword} --admin_email=${WordpressAdminEmail}"
 #                        06_permissions:
 #                            command: !Sub "chown -R ec2-user:ec2-user /${MountPoint}"
+                        07_htaccess:
+                            command: Sub "cd /var/www/html; ln -s /${MountPoint}/wordpress/htaccess .htaccess"
                 swap:
                     commands:
                         01_dd:
                             command: dd if=/dev/zero of=/swapfile bs=1K count=2M; chmod 600 /swapfile; mkswap /swapfile; swapon /swapfile
                         02_mount:
                             command: echo "/swapfile    swap    swap    defaults    0   0" >> /etc/fstab
+                https:
+                    packages:
+                        yum:
+                            mod_ssl: []
+                    commands:
+                        01_ssl:
+                            command: cd /etc/pki/tls/certs; ./make-dummy-cert localhost.crt
+                            # openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/pki/tls/private/localhost.key -out /etc/ssl/certs/localhost.crt
 
         Properties:
             KeyName: !Ref KeyName
